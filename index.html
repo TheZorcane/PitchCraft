@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PitchCraft | Pro Ear Training</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide-static/0.321.0/lucide.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --primary: #38bdf8;
+            --secondary: #818cf8;
+            --accent: #f472b6;
+            --success: #4ade80;
+            --error: #f87171;
+            --text: #f1f5f9;
+            --text-dim: #94a3b8;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- UI Components --- */
+        header {
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .stats { display: flex; gap: 15px; font-weight: 600; font-size: 0.9rem; }
+        .stat-item { display: flex; align-items: center; gap: 5px; }
+        .streak { color: var(--accent); }
+
+        main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 1.25rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: transform 0.1s;
+        }
+        .card:active { transform: scale(0.98); }
+
+        .btn {
+            background: var(--primary);
+            color: var(--bg);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+            font-size: 1rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+        /* --- Game View Styling --- */
+        #game-screen { display: none; height: 100%; flex-direction: column; }
+        .view-header { text-align: center; margin-bottom: 2rem; }
+        .control-area { margin-top: auto; padding-bottom: 2rem; }
+
+        /* Keyboard for Pitch Memory */
+        .piano {
+            display: flex;
+            justify-content: center;
+            height: 150px;
+            margin-top: 20px;
+            position: relative;
+        }
+        .key {
+            width: 40px;
+            height: 100%;
+            border: 1px solid #333;
+            background: white;
+            border-radius: 0 0 4px 4px;
+            cursor: pointer;
+            z-index: 1;
+        }
+        .key.black {
+            background: #000;
+            height: 60%;
+            width: 24px;
+            margin-left: -12px;
+            margin-right: -12px;
+            z-index: 2;
+        }
+        .key.active { background: var(--primary) !important; }
+
+        /* Slider for Drone Match */
+        .slider-container { padding: 2rem 0; }
+        input[type=range] {
+            width: 100%;
+            height: 12px;
+            border-radius: 10px;
+            accent-color: var(--primary);
+        }
+
+        /* --- Overlay/Modals --- */
+        #splash {
+            position: fixed; inset: 0; background: var(--bg);
+            z-index: 100; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; text-align: center;
+            padding: 2rem;
+        }
+
+        .feedback-pop {
+            position: fixed; top: 20%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 3rem; pointer-events: none; opacity: 0; z-index: 50;
+        }
+
+        @keyframes pop {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translate(-50%, -100%) scale(1.2); opacity: 0; }
+        }
+
+        /* Settings Modal */
+        #settings-modal {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+            display: none; align-items: center; justify-content: center; z-index: 1000;
+        }
+
+        .hint-text { color: var(--text-dim); font-size: 0.8rem; margin-top: 4px; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <!-- Splash Screen (Web Audio Unlock) -->
+    <div id="splash">
+        <h1 style="font-size: 3rem; margin-bottom: 0;">PitchCraft</h1>
+        <p style="color: var(--text-dim); margin-bottom: 2rem;">Train your ears. Master the sound.</p>
+        <button class="btn" id="btn-start" style="padding: 20px 40px; font-size: 1.2rem;">
+            Enter Studio
+        </button>
+    </div>
+
+    <header>
+        <div class="stats">
+            <div class="stat-item streak"><i data-lucide="flame"></i> <span id="streak-val">0</span></div>
+            <div class="stat-item"><i data-lucide="award"></i> <span id="xp-val">0</span></div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="toggleSettings()" style="background:none; border:none; color:var(--text);"><i data-lucide="settings"></i></button>
+        </div>
+    </header>
+
+    <!-- Main Menu -->
+    <main id="menu-screen">
+        <h2 style="margin-top:0">Training Modules</h2>
+        
+        <div class="card" onclick="startGame('functional')">
+            <div style="font-weight: bold; font-size: 1.1rem; color: var(--primary);">Functional Pitch</div>
+            <p class="hint-text">Identify scale degrees (1-7) within a key context.</p>
+        </div>
+
+        <div class="card" onclick="startGame('interval')">
+            <div style="font-weight: bold; font-size: 1.1rem; color: var(--secondary);">Interval Arcade</div>
+            <p class="hint-text">Master relative pitch with song reference hints.</p>
+        </div>
+
+        <div class="card" onclick="startGame('memory')">
+            <div style="font-weight: bold; font-size: 1.1rem; color: var(--accent);">Pitch Memory</div>
+            <p class="hint-text">"Simon Says" for melodies. Expand your recall.</p>
+        </div>
+
+        <div class="card" onclick="startGame('drone')">
+            <div style="font-weight: bold; font-size: 1.1rem; color: var(--success);">Drone & Match</div>
+            <p class="hint-text">Eliminate beating by matching pitch against a drone.</p>
+        </div>
+
+        <div class="card" onclick="startGame('chord')">
+            <div style="font-weight: bold; font-size: 1.1rem; color: #fbbf24;">Chord Detective</div>
+            <p class="hint-text">Identify Major, Minor, and 7th chord qualities.</p>
+        </div>
+    </main>
+
+    <!-- Game Play Area -->
+    <div id="game-screen">
+        <main>
+            <div class="view-header">
+                <button onclick="exitToMenu()" style="position: absolute; left: 1rem; background:none; border:none; color:var(--text);"><i data-lucide="arrow-left"></i></button>
+                <h3 id="game-title">Game Mode</h3>
+                <p id="game-desc" class="hint-text"></p>
+            </div>
+
+            <div id="game-content" style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+                <!-- Content injected by JS -->
+            </div>
+
+            <div class="control-area">
+                <button class="btn btn-outline" id="btn-replay" style="width: 100%; margin-bottom: 1rem;">
+                    <i data-lucide="repeat"></i> Play Sound
+                </button>
+                <div id="action-grid" class="grid-3">
+                    <!-- Buttons injected by JS -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal">
+        <div class="card" style="width: 80%; max-width: 400px;">
+            <h3>Audio Settings</h3>
+            <label class="hint-text">Master Volume</label>
+            <input type="range" id="vol-control" min="0" max="1" step="0.1" value="0.5">
+            
+            <label class="hint-text" style="display: block; margin-top: 1.5rem;">Synth Type</label>
+            <select id="synth-type" style="width:100%; padding:10px; border-radius:8px; background:var(--bg); color:white; border:1px solid #444;">
+                <option value="piano">FM Piano</option>
+                <option value="sine">Pure Sine</option>
+                <option value="saw">Warm Saw</option>
+            </select>
+            
+            <button class="btn" style="width:100%; margin-top: 2rem;" onclick="toggleSettings()">Close</button>
+        </div>
+    </div>
+
+    <div class="feedback-pop" id="feedback">✨</div>
+
+    <script>
+        // --- Initialization & Audio Engine ---
+        let audioCtx;
+        let masterGain;
+        const state = {
+            xp: parseInt(localStorage.getItem('pitchcraft_xp')) || 0,
+            streak: 0,
+            currentMode: null,
+            targetData: null,
+            synthType: 'piano'
+        };
+
+        const NOTE_FREQS = {
+            'C': 261.63, 'C#': 277.18, 'D': 293.66, 'D#': 311.13, 'E': 329.63,
+            'F': 349.23, 'F#': 369.99, 'G': 392.00, 'G#': 415.30, 'A': 440.00,
+            'A#': 466.16, 'B': 493.88
+        };
+
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination);
+            masterGain.gain.value = 0.5;
+            lucide.createIcons();
+        }
+
+        // --- Synthesis Engine ---
+        function playNote(freq, startTime = 0, duration = 0.5) {
+            const now = audioCtx.currentTime + startTime;
+            const type = document.getElementById('synth-type').value;
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            const filter = audioCtx.createBiquadFilter();
+
+            gain.connect(masterGain);
+            osc.connect(filter);
+            filter.connect(gain);
+
+            // ADSR Envelopes
+            gain.gain.setValueAtTime(0, now);
+            gain.gain.linearRampToValueAtTime(0.4, now + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(2000, now);
+            filter.frequency.exponentialRampToValueAtTime(200, now + duration);
+
+            if (type === 'piano') {
+                osc.type = 'triangle';
+                // Simple FM-like harmonic
+                const mod = audioCtx.createOscillator();
+                const modGain = audioCtx.createGain();
+                mod.frequency.value = freq * 2.01;
+                modGain.gain.value = 50;
+                mod.connect(modGain);
+                modGain.connect(osc.frequency);
+                mod.start(now);
+                mod.stop(now + duration);
+            } else if (type === 'sine') {
+                osc.type = 'sine';
+            } else {
+                osc.type = 'sawtooth';
+                filter.frequency.value = 800;
+            }
+
+            osc.frequency.setValueAtTime(freq, now);
+            osc.start(now);
+            osc.stop(now + duration);
+        }
+
+        // --- Game Logic ---
+        const GAMES = {
+            functional: {
+                title: 'Functional Pitch',
+                desc: 'Listen to the cadence, then identify the scale degree.',
+                setup: () => {
+                    const keys = Object.values(NOTE_FREQS);
+                    const root = keys[Math.floor(Math.random() * 12)];
+                    state.targetData = { root, degree: Math.floor(Math.random() * 7) + 1 };
+                    
+                    const grid = document.getElementById('action-grid');
+                    grid.className = 'grid-3';
+                    grid.innerHTML = '';
+                    [1,2,3,4,5,6,7].forEach(d => {
+                        const b = document.createElement('button');
+                        b.className = 'btn btn-outline';
+                        b.innerText = d;
+                        b.onclick = () => checkAnswer(d, state.targetData.degree);
+                        grid.appendChild(b);
+                    });
+                    playFunctional();
+                }
+            },
+            interval: {
+                title: 'Interval Arcade',
+                desc: 'What is the distance between these two notes?',
+                setup: () => {
+                    const intervals = [
+                        {n: 'm2', s: 1, hint: 'Jaws'}, {n: 'M2', s: 2, hint: 'Happy B-Day'},
+                        {n: 'm3', s: 3, hint: 'Greensleeves'}, {n: 'M3', s: 4, hint: 'Oh When the Saints'},
+                        {n: 'P4', s: 5, hint: 'Here Comes the Bride'}, {n: 'TT', s: 6, hint: 'Simpsons'},
+                        {n: 'P5', s: 7, hint: 'Star Wars'}, {n: 'm6', s: 8, hint: 'Love Story'},
+                        {n: 'M6', s: 9, hint: 'NBC Chimes'}, {n: 'm7', s: 10, hint: 'Star Trek'},
+                        {n: 'M7', s: 11, hint: 'Take on Me'}, {n: 'P8', s: 12, hint: 'Somewhere Over...'}
+                    ];
+                    const rootIdx = Math.floor(Math.random() * 12);
+                    const root = Object.values(NOTE_FREQS)[rootIdx];
+                    const interval = intervals[Math.floor(Math.random() * intervals.length)];
+                    state.targetData = { root, interval };
+                    
+                    const grid = document.getElementById('action-grid');
+                    grid.className = 'grid-3';
+                    grid.innerHTML = '';
+                    intervals.forEach(i => {
+                        const b = document.createElement('button');
+                        b.className = 'btn btn-outline';
+                        b.style.fontSize = '0.8rem';
+                        b.innerHTML = `${i.n}<br/><span style="font-size:0.6rem; opacity:0.6">${i.hint}</span>`;
+                        b.onclick = () => checkAnswer(i.s, interval.s);
+                        grid.appendChild(b);
+                    });
+                    playInterval();
+                }
+            },
+            memory: {
+                title: 'Pitch Memory',
+                desc: 'Repeat the melody sequence back.',
+                setup: () => {
+                    state.targetData = { 
+                        sequence: Array.from({length: 3 + Math.floor(state.streak/5)}, () => Math.floor(Math.random() * 8)),
+                        userIndex: 0 
+                    };
+                    const grid = document.getElementById('action-grid');
+                    grid.innerHTML = ''; // Not used here
+                    
+                    const content = document.getElementById('game-content');
+                    content.innerHTML = `
+                        <div class="piano" id="piano-ui">
+                            <div class="key" onclick="inputMemory(0)"></div>
+                            <div class="key black" onclick="inputMemory(1)"></div>
+                            <div class="key" onclick="inputMemory(2)"></div>
+                            <div class="key black" onclick="inputMemory(3)"></div>
+                            <div class="key" onclick="inputMemory(4)"></div>
+                            <div class="key" onclick="inputMemory(5)"></div>
+                            <div class="key black" onclick="inputMemory(6)"></div>
+                            <div class="key" onclick="inputMemory(7)"></div>
+                        </div>
+                    `;
+                    playMemory();
+                }
+            },
+            drone: {
+                title: 'Drone & Match',
+                desc: 'Drag the slider to find the perfect unison.',
+                setup: () => {
+                    const root = 220 + (Math.random() * 100);
+                    const detune = (Math.random() - 0.5) * 40; // Starts +/- 20Hz off
+                    state.targetData = { root, current: root + detune };
+                    
+                    const content = document.getElementById('game-content');
+                    content.innerHTML = `
+                        <div class="slider-container">
+                            <input type="range" id="drone-slider" min="-30" max="30" step="0.1" value="${detune}">
+                            <p style="text-align:center; margin-top:20px;">Eliminate the "Wobble"</p>
+                        </div>
+                        <button class="btn" onclick="checkDrone()">Lock In Pitch</button>
+                    `;
+                    
+                    document.getElementById('drone-slider').oninput = (e) => {
+                        state.targetData.current = state.targetData.root + parseFloat(e.target.value);
+                        updateDrone();
+                    };
+                    startDroneAudio();
+                }
+            },
+            chord: {
+                title: 'Chord Detective',
+                desc: 'Identify the quality of the chord.',
+                setup: () => {
+                    const qualities = [
+                        {n: 'Major', s: [0, 4, 7]}, {n: 'Minor', s: [0, 3, 7]},
+                        {n: 'Dim', s: [0, 3, 6]}, {n: 'Aug', s: [0, 4, 8]},
+                        {n: 'Dom 7', s: [0, 4, 7, 10]}, {n: 'Maj 7', s: [0, 4, 7, 11]}
+                    ];
+                    const root = Object.values(NOTE_FREQS)[Math.floor(Math.random() * 12)];
+                    const target = qualities[Math.floor(Math.random() * qualities.length)];
+                    state.targetData = { root, target, qualities };
+                    
+                    const grid = document.getElementById('action-grid');
+                    grid.className = 'grid-2';
+                    grid.innerHTML = '';
+                    qualities.forEach(q => {
+                        const b = document.createElement('button');
+                        b.className = 'btn btn-outline';
+                        b.innerText = q.n;
+                        b.onclick = () => checkAnswer(q.n, target.n);
+                        grid.appendChild(b);
+                    });
+                    playChord();
+                }
+            }
+        };
+
+        // --- Audio Triggers per Mode ---
+        function playFunctional() {
+            const r = state.targetData.root;
+            const sequence = [
+                [r, r*1.25, r*1.5], // I
+                [r*1.33, r*1.66, r*2], // IV
+                [r*1.125, r*1.5, r*1.875], // V
+                [r, r*1.25, r*1.5] // I
+            ];
+            sequence.forEach((chord, i) => {
+                chord.forEach(f => playNote(f, i * 0.6, 0.5));
+            });
+            // Target note
+            const scale = [1, 1.125, 1.25, 1.33, 1.5, 1.66, 1.875];
+            playNote(r * scale[state.targetData.degree-1], 2.8, 1);
+        }
+
+        function playInterval() {
+            playNote(state.targetData.root, 0, 0.6);
+            playNote(state.targetData.root * Math.pow(2, state.targetData.interval.s/12), 0.7, 0.8);
+        }
+
+        function playMemory() {
+            state.targetData.sequence.forEach((noteIdx, i) => {
+                const f = 261.63 * Math.pow(2, noteIdx/12);
+                setTimeout(() => {
+                    const keys = document.querySelectorAll('.key');
+                    keys[noteIdx].classList.add('active');
+                    playNote(f, 0, 0.4);
+                    setTimeout(() => keys[noteIdx].classList.remove('active'), 300);
+                }, i * 600);
+            });
+        }
+
+        function inputMemory(idx) {
+            const target = state.targetData.sequence[state.targetData.userIndex];
+            const f = 261.63 * Math.pow(2, idx/12);
+            playNote(f, 0, 0.3);
+            
+            if (idx === target) {
+                state.targetData.userIndex++;
+                if (state.targetData.userIndex === state.targetData.sequence.length) {
+                    checkAnswer(true, true);
+                }
+            } else {
+                checkAnswer(false, true);
+            }
+        }
+
+        let droneOsc1, droneOsc2;
+        function startDroneAudio() {
+            stopDroneAudio();
+            droneOsc1 = audioCtx.createOscillator();
+            droneOsc2 = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            
+            droneOsc1.frequency.value = state.targetData.root;
+            droneOsc2.frequency.value = state.targetData.current;
+            
+            g.gain.value = 0.2;
+            g.connect(masterGain);
+            droneOsc1.connect(g);
+            droneOsc2.connect(g);
+            
+            droneOsc1.start();
+            droneOsc2.start();
+        }
+
+        function updateDrone() {
+            if (droneOsc2) droneOsc2.frequency.setTargetAtTime(state.targetData.current, audioCtx.currentTime, 0.05);
+        }
+
+        function stopDroneAudio() {
+            if (droneOsc1) { droneOsc1.stop(); droneOsc2.stop(); }
+        }
+
+        function checkDrone() {
+            const diff = Math.abs(state.targetData.root - state.targetData.current);
+            stopDroneAudio();
+            checkAnswer(diff < 1.0, true);
+        }
+
+        function playChord() {
+            const r = state.targetData.root;
+            state.targetData.target.s.forEach((semi, i) => {
+                playNote(r * Math.pow(2, semi/12), i * 0.1, 1.2);
+            });
+        }
+
+        // --- Core UX Flow ---
+        document.getElementById('btn-start').onclick = () => {
+            initAudio();
+            document.getElementById('splash').style.display = 'none';
+        };
+
+        function startGame(mode) {
+            state.currentMode = mode;
+            document.getElementById('menu-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'flex';
+            document.getElementById('game-title').innerText = GAMES[mode].title;
+            document.getElementById('game-desc').innerText = GAMES[mode].desc;
+            
+            // Replay button setup
+            document.getElementById('btn-replay').className = mode === 'drone' ? 'hidden' : 'btn btn-outline';
+            document.getElementById('btn-replay').onclick = () => {
+                if (mode === 'functional') playFunctional();
+                if (mode === 'interval') playInterval();
+                if (mode === 'chord') playChord();
+                if (mode === 'memory') playMemory();
+            };
+
+            GAMES[mode].setup();
+        }
+
+        function exitToMenu() {
+            stopDroneAudio();
+            document.getElementById('menu-screen').style.display = 'block';
+            document.getElementById('game-screen').style.display = 'none';
+            document.getElementById('game-content').innerHTML = '';
+        }
+
+        function checkAnswer(val, target) {
+            const isCorrect = val === target;
+            const fb = document.getElementById('feedback');
+            
+            if (isCorrect) {
+                state.streak++;
+                state.xp += 10;
+                fb.innerText = "✨ NICE!";
+                fb.style.color = "var(--success)";
+            } else {
+                state.streak = 0;
+                fb.innerText = "❌ OOPS";
+                fb.style.color = "var(--error)";
+            }
+            
+            fb.style.animation = 'pop 0.8s ease-out';
+            setTimeout(() => fb.style.animation = '', 800);
+            
+            updateStats();
+            setTimeout(() => {
+                if (state.currentMode) GAMES[state.currentMode].setup();
+            }, 1000);
+        }
+
+        function updateStats() {
+            document.getElementById('streak-val').innerText = state.streak;
+            document.getElementById('xp-val').innerText = state.xp;
+            localStorage.setItem('pitchcraft_xp', state.xp);
+        }
+
+        function toggleSettings() {
+            const modal = document.getElementById('settings-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        document.getElementById('vol-control').oninput = (e) => {
+            if (masterGain) masterGain.gain.value = e.target.value;
+        };
+
+        // Initialize Icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
